@@ -2,6 +2,8 @@
 
 import CulqiSubscribeButton from "@/components/CulqiSubscribeButton";
 
+export const dynamic = "force-dynamic";
+
 export default function PlanesPage() {
   return (
     <main className="mx-auto max-w-4xl p-8">

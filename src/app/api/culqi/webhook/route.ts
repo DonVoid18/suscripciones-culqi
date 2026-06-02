@@ -8,6 +8,12 @@ export async function POST(request: NextRequest) {
   try {
     const event = await request.json();
 
+    console.log("Webhook Culqi recibido:", {
+      id: event.id,
+      type: event.type,
+      payload: event,
+    });
+
     await prisma.culqiWebhookEvent.upsert({
       where: { eventId: event.id },
       update: {},
