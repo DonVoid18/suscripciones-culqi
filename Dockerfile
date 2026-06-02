@@ -1,85 +1,68 @@
 # syntax=docker/dockerfile:1
 
 ARG NODE_VERSION=22.14.0
-ARG PNPM_VERSION=10.10.0
 
 ################################################################################
-# Use node image for base image for all stages.
-FROM node:${NODE_VERSION}-alpine as base
+# Base
+################################################################################
+FROM node:${NODE_VERSION}-alpine AS base
 
-# Set working directory for all build stages.
+RUN apk add --no-cache openssl libc6-compat
+
 WORKDIR /app
 
-# Install pnpm.
-RUN --mount=type=cache,target=/root/.npm \
-  npm install -g pnpm@${PNPM_VERSION}
+################################################################################
+# Dependencies
+################################################################################
+FROM base AS deps
+
+COPY package.json pnpm-lock.yaml ./
+
+# Corepack usará la versión del packageManager
+RUN corepack enable
+
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
+  pnpm install --frozen-lockfile
 
 ################################################################################
-# Create a stage for installing production dependecies.
-FROM base as deps
-
-# Download dependencies as a separate step to take advantage of Docker's caching.
-# Leverage a cache mount to /root/.local/share/pnpm/store to speed up subsequent builds.
-# Leverage bind mounts to package.json and pnpm-lock.yaml to avoid having to copy them
-# into this layer.
-RUN --mount=type=bind,source=package.json,target=package.json \
-  --mount=type=bind,source=pnpm-lock.yaml,target=pnpm-lock.yaml \
-  --mount=type=cache,target=/root/.local/share/pnpm/store \
-  pnpm install --prod --frozen-lockfile
-
+# Build
 ################################################################################
-# Create a stage for building the application.
-FROM deps as build
+FROM deps AS build
 
-# Añade el ARG para las variables NEXT_PUBLIC_ que se necesitan en el build
 ARG NEXT_PUBLIC_NEXTAUTH_URL
 ARG NEXT_PUBLIC_CULQI_PUBLIC_KEY
 
-# Configura solo las variables de entorno necesarias para el build
 ENV NEXT_PUBLIC_NEXTAUTH_URL=${NEXT_PUBLIC_NEXTAUTH_URL}
 ENV NEXT_PUBLIC_CULQI_PUBLIC_KEY=${NEXT_PUBLIC_CULQI_PUBLIC_KEY}
+ENV NODE_ENV=production
 
-# Download additional development dependencies before building, as some projects require
-# "devDependencies" to be installed to build. If you don't need this, remove this step.
-RUN --mount=type=bind,source=package.json,target=package.json \
-  --mount=type=bind,source=pnpm-lock.yaml,target=pnpm-lock.yaml \
-  --mount=type=cache,target=/root/.local/share/pnpm/store \
-  pnpm install --frozen-lockfile
-
-# Copy the rest of the source files into the image.
 COPY . .
 
 RUN pnpm run db:generate
 
-# Run the build script.
 RUN pnpm run build
 
 ################################################################################
-# Create a new stage to run the application with minimal runtime dependencies
-# where the necessary files are copied from the build stage.
-FROM base as final
+# Runtime
+################################################################################
+FROM base AS final
 
-# Use production node environment by default.
-ENV NODE_ENV production
+ENV NODE_ENV=production
 
-# Run the application as a non-root user.
-USER node
+WORKDIR /app
 
-# Copy package.json so that package manager commands can be used.
-COPY package.json .
+RUN corepack enable
 
-# ⭐ CRÍTICO: Copiar next.config.ts para que Next.js lea la configuración
-COPY --from=build /app/next.config.ts ./next.config.ts
+COPY --from=build /app/package.json ./
+COPY --from=build /app/pnpm-lock.yaml ./
 
-# Copy the production dependencies from the deps stage and also
-# the built application from the build stage into the image.
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=build /app/node_modules/.pnpm ./node_modules/.pnpm
 COPY --from=build /app/.next ./.next
 COPY --from=build /app/public ./public
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/next.config.ts ./next.config.ts
 
-# Expose the port that the application listens on.
 EXPOSE 3000
 
-# Run the application.
-CMD pnpm start
+USER node
+
+CMD ["pnpm", "start"]
