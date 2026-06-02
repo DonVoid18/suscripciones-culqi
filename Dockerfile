@@ -33,9 +33,11 @@ FROM deps as build
 
 # Añade el ARG para las variables NEXT_PUBLIC_ que se necesitan en el build
 ARG NEXT_PUBLIC_NEXTAUTH_URL
+ARG NEXT_PUBLIC_CULQI_PUBLIC_KEY
 
 # Configura solo las variables de entorno necesarias para el build
 ENV NEXT_PUBLIC_NEXTAUTH_URL=${NEXT_PUBLIC_NEXTAUTH_URL}
+ENV NEXT_PUBLIC_CULQI_PUBLIC_KEY=${NEXT_PUBLIC_CULQI_PUBLIC_KEY}
 
 # Download additional development dependencies before building, as some projects require
 # "devDependencies" to be installed to build. If you don't need this, remove this step.

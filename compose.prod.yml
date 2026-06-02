@@ -5,6 +5,7 @@ services:
       dockerfile: Dockerfile
       args:
         NEXT_PUBLIC_NEXTAUTH_URL: ${NEXT_PUBLIC_NEXTAUTH_URL}
+        NEXT_PUBLIC_CULQI_PUBLIC_KEY: ${NEXT_PUBLIC_CULQI_PUBLIC_KEY}
     volumes:
       - ./public:/app/public
     ports:
