@@ -2,38 +2,27 @@
 
 import { NextRequest, NextResponse } from "next/server";
 
+import { prisma } from "@/shared/infrastructure/libs/prisma";
+
 export async function POST(request: NextRequest) {
   try {
     const event = await request.json();
 
-    console.log("Webhook Culqi recibido:", event);
-
-    /*
-      Aquí debes validar y actualizar tu base de datos.
-
-      Ejemplos:
-      - Si el cargo de la suscripción fue exitoso:
-        marcar suscripción como activa o pagada.
-
-      - Si el cargo falló:
-        marcar pago como fallido y notificar al cliente.
-
-      - Si la suscripción fue cancelada:
-        actualizar estado a cancelada.
-    */
-
-    return NextResponse.json({
-      success: true,
-      message: "Webhook recibido.",
+    await prisma.culqiWebhookEvent.upsert({
+      where: { eventId: event.id },
+      update: {},
+      create: {
+        eventId: event.id,
+        eventType: event.type,
+        payload: event,
+      },
     });
+
+    return NextResponse.json({ success: true, message: "Webhook recibido." });
   } catch (error) {
     console.error(error);
-
     return NextResponse.json(
-      {
-        success: false,
-        message: "Error procesando webhook.",
-      },
+      { success: false, message: "Error procesando webhook." },
       { status: 500 },
     );
   }
