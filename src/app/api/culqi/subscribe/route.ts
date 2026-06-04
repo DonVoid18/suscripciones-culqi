@@ -8,6 +8,8 @@ import {
 } from "@/lib/culqi";
 import { NextRequest, NextResponse } from "next/server";
 
+import { prisma } from "@/shared/infrastructure/libs/prisma";
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -32,12 +34,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const allowedPlans = [
-      process.env.CULQI_PLAN_MENSUAL,
-      process.env.CULQI_PLAN_ANUAL,
-    ].filter(Boolean);
+    const selectedPlan = await prisma.culqiPlanes.findFirst({
+      where: {
+        planId,
+        active: true,
+      },
+      select: {
+        id: true,
+        planId: true,
+        name: true,
+        active: true,
+      },
+    });
 
-    if (!allowedPlans.includes(planId)) {
+    if (!selectedPlan) {
       return NextResponse.json(
         {
           success: false,
@@ -74,7 +84,7 @@ export async function POST(request: NextRequest) {
 
     const subscription = await createCulqiSubscription({
       card_id: card.id,
-      plan_id: planId,
+      plan_id: selectedPlan.planId,
       tyc: true,
       metadata: {
         email,
