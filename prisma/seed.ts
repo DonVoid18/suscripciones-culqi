@@ -1,6 +1,7 @@
 // prisma/seed-planes-culqi.ts
 
 import { prisma } from "@/shared/infrastructure/libs/prisma";
+import { PlanInterval } from "@prisma/client";
 
 const API_URL = "https://api.culqi.com/v2/recurrent/plans/create";
 
@@ -27,7 +28,22 @@ interface CulqiPlan {
   currency: string;
 }
 
-const PLANS: Array<PlanPayload & { envKey: string }> = [
+function getPlanInterval(intervalCount: number): PlanInterval {
+  switch (intervalCount) {
+    case 1:
+      return PlanInterval.MONTHLY;
+    case 3:
+      return PlanInterval.QUARTERLY;
+    case 6:
+      return PlanInterval.SEMIANNUAL;
+    case 12:
+      return PlanInterval.ANNUAL;
+    default:
+      throw new Error(`Intervalo no soportado: ${intervalCount}`);
+  }
+}
+
+const PLANS: Array<PlanPayload> = [
   {
     name: "Plan Mensual",
     short_name: "plan-mensual",
@@ -42,7 +58,6 @@ const PLANS: Array<PlanPayload & { envKey: string }> = [
       amount: 0,
       interval_unit_time: 1,
     },
-    envKey: "CULQI_PLAN_MONTHLY",
   },
   {
     name: "Plan Trimestral",
@@ -58,7 +73,6 @@ const PLANS: Array<PlanPayload & { envKey: string }> = [
       amount: 0,
       interval_unit_time: 1,
     },
-    envKey: "CULQI_PLAN_QUARTERLY",
   },
   // {
   //   name: "Plan Semestral",
@@ -74,7 +88,6 @@ const PLANS: Array<PlanPayload & { envKey: string }> = [
   //     amount: 0,
   //     interval_unit_time: 1,
   //   },
-  //   envKey: "CULQI_PLAN_SEMIANNUAL",
   // },
   {
     name: "Plan Anual",
@@ -90,7 +103,6 @@ const PLANS: Array<PlanPayload & { envKey: string }> = [
       amount: 0,
       interval_unit_time: 1,
     },
-    envKey: "CULQI_PLAN_ANNUAL",
   },
 ];
 
@@ -137,7 +149,7 @@ async function main() {
 
   const results: Record<string, string> = {};
 
-  for (const { envKey, ...planData } of PLANS) {
+  for (const { ...planData } of PLANS) {
     const plan = await createPlan(planData, secretKey);
     if (plan) {
       await prisma.culqiPlanes.create({
@@ -148,10 +160,11 @@ async function main() {
           price: planData.amount,
           currency: planData.currency,
           active: true,
+          interval: getPlanInterval(planData.interval_count),
+          intervalCount: planData.interval_count,
         },
       });
 
-      results[envKey] = plan.id;
       console.log(`✅ ${planData.name} — ID: ${plan.id}`);
     }
   }
