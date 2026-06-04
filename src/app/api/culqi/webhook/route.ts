@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 // app/api/culqi/webhook/route.ts
 
 import { NextRequest, NextResponse } from "next/server";
