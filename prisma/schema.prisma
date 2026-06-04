@@ -71,6 +71,21 @@ model CulqiWebhookEvent {
   payload   Json
   processed Boolean  @default(false)
   createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("culqi_webhook_events")
+}
+
+model CulqiPlanes {
+  id          String   @id @default(cuid())
+  planId      String   @unique @map("plan_id")
+  name        String
+  description String?
+  price       Int
+  currency    String
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("culqi_planes")
 }
