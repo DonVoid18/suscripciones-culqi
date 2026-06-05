@@ -5,246 +5,111 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { prisma } from "@/shared/infrastructure/libs/prisma";
+import { DataSuscriptionCancel } from "@/shared/infrastructure/types/culqi.suscription.cancel";
 
-type CulqiChargePayload = {
-  creationDate?: number;
-  email?: string;
-  subscription_id?: string;
-  outcome?: {
-    merchantMessage?: string;
-    merchant_message?: string;
-    userMessage?: string;
-    user_message?: string;
-  };
-  metadata?: {
-    subscription_id?: string;
-    subscriptionId?: string;
-    email?: string;
-  };
-  source?: {
-    customerId?: string;
-    metadata?: {
-      email?: string;
-      subscription_id?: string;
-      subscriptionId?: string;
-    };
-  };
-};
+interface SuscriptionCharge {
+  object: string;
+  id: string;
+  type: string;
+  creation_date: number;
+  data: string;
+}
+
+export interface DataSuscriptionFailed {
+  planId: string;
+  subsId: string;
+  merchantId: string;
+  chargeDate: string;
+  cardNumber: string;
+  cardBrand: string;
+}
+
+// sxn_live_02KOnl2nrMHN2NxJ
 
 export async function POST(request: NextRequest) {
-  let event: any;
+  const event = (await request.json()) as SuscriptionCharge;
 
-  try {
-    event = await request.json();
-  } catch {
-    return NextResponse.json({ message: "Invalid JSON" }, { status: 400 });
-  }
+  console.log("Evento recibido:", event);
 
-  // Idempotencia: ignorar si ya fue procesado
-  const existing = await prisma.culqiWebhookEvent.findUnique({
-    where: { eventId: event.id },
-  });
+  // if (event.type === "charge.creation.succeeded") {
+  //   const data = JSON.parse(event.data) as DataSuscriptionSucceeded;
 
-  if (existing?.processed) {
-    return NextResponse.json({ success: true, message: "Ya procesado." });
-  }
+  //   const planFound = await prisma.culqiPlanes.findUnique({
+  //     where: { planId: data. },
+  //   });
 
-  // Guardar evento antes de procesarlo
-  await prisma.culqiWebhookEvent.upsert({
-    where: { eventId: event.id },
-    update: {},
-    create: {
-      eventId: event.id,
-      eventType: event.type,
-      payload: event,
-      processed: false,
-    },
-  });
+  //   if (!planFound) {
+  //     return NextResponse.json({
+  //       success: false,
+  //       message: `Plan con ID ${data.planId} no encontrado.`,
+  //     });
+  //   }
 
-  // Procesar según tipo de evento
-  try {
-    await handleEvent(event);
+  //   const numberDays =
+  //     planFound.interval === "MONTHLY"
+  //       ? 30
+  //       : planFound.interval === "ANNUAL"
+  //         ? 365
+  //         : planFound.interval === "QUARTERLY"
+  //           ? 90
+  //           : planFound.interval === "SEMIANNUAL"
+  //             ? 180
+  //             : 0;
 
-    await prisma.culqiWebhookEvent.update({
-      where: { eventId: event.id },
-      data: { processed: true },
-    });
-  } catch (error) {
-    console.error("Error procesando evento:", event.type, error);
-    return NextResponse.json(
-      { success: false, message: "Error procesando evento." },
-      { status: 500 },
-    );
-  }
+  //   await prisma.userSubscription.update({
+  //     where: { culqiSubscriptionId: data.subsId },
+  //     data: {
+  //       status: "ACTIVE",
+  //       currentPeriodStart: new Date(data.chargeDate),
+  //       currentPeriodEnd: new Date(
+  //         new Date(data.chargeDate).getTime() +
+  //           numberDays * 24 * 60 * 60 * 1000,
+  //       ),
+  //     },
+  //   });
 
-  return NextResponse.json({ success: true, message: "Webhook procesado." });
-}
+  //   return NextResponse.json({
+  //     success: true,
+  //     message: `Suscripción ${data.subsId} activada por ${numberDays} días.`,
+  //   });
+  // }
 
-async function handleEvent(event: any) {
-  const data = event.data?.object ?? event.data;
+  // if (event.type === "charge.creation.failed") {
+  //   const data = JSON.parse(event.data) as DataSuscriptionFailed;
 
-  switch (event.type) {
-    // ✅ Cobro exitoso → activar/renovar suscripción
-    case "charge.creation.succeeded": {
-      const charge = data as CulqiChargePayload;
-      const subscription = await findSubscriptionForCharge(charge);
+  //   await prisma.userSubscription.update({
+  //     where: { culqiSubscriptionId: data.subsId },
+  //     data: {
+  //       status: "INACTIVE",
+  //     },
+  //   });
 
-      if (!subscription) {
-        console.warn("No se encontró la suscripción para el cargo exitoso.", {
-          chargeId: event.id,
-          email: charge.email ?? charge.source?.metadata?.email,
-          customerId: charge.source?.customerId,
-        });
-        break;
-      }
+  //   return NextResponse.json({
+  //     success: true,
+  //     message: `Suscripción ${data.subsId} desactivada.`,
+  //   });
+  // }
 
-      const periodStart = toDateFromCulqiTimestamp(charge.creationDate);
-      if (!periodStart) {
-        console.warn("Cargo exitoso sin creationDate válido.", {
-          chargeId: event.id,
-          subscriptionId: subscription.id,
-        });
-        break;
-      }
+  if (event.type === "subscription.cancel.succeeded") {
+    console.log("Suscripción cancelada:", event);
+    const data = JSON.parse(event.data) as DataSuscriptionCancel;
 
-      await prisma.userSubscription.update({
-        where: { id: subscription.id },
-        data: {
-          status: "ACTIVE",
-          currentPeriodStart: periodStart,
-          currentPeriodEnd: calculatePeriodEnd(
-            periodStart,
-            subscription.plan.interval,
-            subscription.plan.intervalCount,
-          ),
-        },
-      });
-      break;
-    }
-
-    // ❌ Cobro fallido → marcar para reintento o cancelar
-    case "charge.creation.failed": {
-      const charge = data as CulqiChargePayload;
-      const subscription = await findSubscriptionForCharge(charge);
-
-      if (!subscription) break;
-
-      await prisma.userSubscription.update({
-        where: { id: subscription.id },
-        data: {
-          status: "PAST_DUE", // Pago pendiente, no cancelar aún
-        },
-      });
-
-      // Opcional: registrar el motivo del fallo
-      console.warn(
-        `Cobro fallido para suscripción ${subscription.id}:`,
-        charge.outcome?.merchantMessage ??
-          charge.outcome?.merchant_message ??
-          data.decline_reason,
-      );
-      break;
-    }
-
-    // Suscripción actualizada/cancelada desde el dashboard de Culqi
-    case "subscription.update": {
-      const subscriptionId = data.id;
-      if (!subscriptionId) break;
-
-      if (data.status === "canceled") {
-        await prisma.userSubscription.updateMany({
-          where: { culqiSubscriptionId: subscriptionId },
-          data: {
-            status: "CANCELED",
-            canceledAt: new Date(),
-          },
-        });
-      }
-      break;
-    }
-
-    default:
-      console.log("Evento no manejado:", event.type);
-  }
-}
-
-async function findSubscriptionForCharge(charge: CulqiChargePayload) {
-  const subscriptionId =
-    charge.metadata?.subscription_id ??
-    charge.metadata?.subscriptionId ??
-    charge.subscription_id ??
-    charge.source?.metadata?.subscription_id ??
-    charge.source?.metadata?.subscriptionId;
-
-  if (subscriptionId) {
-    return prisma.userSubscription.findUnique({
-      where: { culqiSubscriptionId: subscriptionId },
-      include: { plan: true },
-    });
-  }
-
-  const customerId = charge.source?.customerId;
-  if (customerId) {
-    return prisma.userSubscription.findFirst({
-      where: { culqiCustomerId: customerId },
-      include: { plan: true },
-    });
-  }
-
-  const email = charge.email ?? charge.source?.metadata?.email;
-  if (email) {
-    const user = await prisma.user.findUnique({
-      where: { email },
-      select: {
-        subscriptions: {
-          include: { plan: true },
-          take: 1,
-        },
+    await prisma.userSubscription.update({
+      where: { culqiSubscriptionId: data.message.object.subsId },
+      data: {
+        status: "CANCELED",
+        canceledAt: new Date(),
       },
     });
 
-    return user?.subscriptions[0] ?? null;
+    return NextResponse.json({
+      success: true,
+      message: `Suscripción ${data.message.object.subsId} cancelada.`,
+    });
   }
 
-  return null;
-}
-
-function toDateFromCulqiTimestamp(timestamp?: number): Date | null {
-  if (typeof timestamp !== "number" || Number.isNaN(timestamp)) {
-    return null;
-  }
-
-  const milliseconds =
-    timestamp < 1_000_000_000_000 ? timestamp * 1000 : timestamp;
-
-  return new Date(milliseconds);
-}
-
-// Calcula el fin del período según el intervalo del plan
-function calculatePeriodEnd(
-  start: Date,
-  interval?: string,
-  intervalCount = 1,
-): Date {
-  const end = new Date(start);
-  const safeIntervalCount = Math.max(intervalCount, 1);
-
-  switch (interval) {
-    case "MONTHLY":
-      end.setMonth(end.getMonth() + safeIntervalCount);
-      break;
-    case "QUARTERLY":
-      end.setMonth(end.getMonth() + 3 * safeIntervalCount);
-      break;
-    case "SEMIANNUAL":
-      end.setMonth(end.getMonth() + 6 * safeIntervalCount);
-      break;
-    case "ANNUAL":
-      end.setFullYear(end.getFullYear() + safeIntervalCount);
-      break;
-    default:
-      end.setMonth(end.getMonth() + safeIntervalCount); // fallback mensual
-  }
-
-  return end;
+  return NextResponse.json({
+    success: true,
+    message: "Webhook procesado, pero no se ha detectado ningún evento.",
+  });
 }

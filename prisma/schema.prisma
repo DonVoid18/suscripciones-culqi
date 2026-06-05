@@ -100,10 +100,9 @@ model UserSubscription {
   planId              String             @map("plan_id")
   culqiSubscriptionId String             @unique @map("culqi_subscription_id")
   culqiCustomerId     String             @map("culqi_customer_id")
-  status              SubscriptionStatus @default(ACTIVE)
-  currentPeriodStart  DateTime           @map("current_period_start")
-  currentPeriodEnd    DateTime           @map("current_period_end")
-  cancelAtPeriodEnd   Boolean            @default(false) @map("cancel_at_period_end")
+  status              SubscriptionStatus @default(INACTIVE)
+  currentPeriodStart  DateTime?          @map("current_period_start")
+  currentPeriodEnd    DateTime?          @map("current_period_end")
   canceledAt          DateTime?          @map("canceled_at")
   createdAt           DateTime           @default(now()) @map("created_at")
   updatedAt           DateTime           @updatedAt @map("updated_at")
@@ -123,7 +122,7 @@ enum PlanInterval {
 
 enum SubscriptionStatus {
   ACTIVE
-  PAST_DUE // pago fallido, en gracia
+  INACTIVE
   CANCELED
   EXPIRED
 }

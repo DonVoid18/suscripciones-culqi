@@ -92,15 +92,16 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    /*
-      Aquí debes guardar en tu base de datos:
-      - customer.id
-      - card.id
-      - subscription.id
-      - planId
-      - email
-      - status
-    */
+    const user = await prisma.user.findMany();
+
+    await prisma.userSubscription.create({
+      data: {
+        userId: user[0].id,
+        planId: selectedPlan.id,
+        culqiSubscriptionId: subscription.id,
+        culqiCustomerId: customer.id,
+      },
+    });
 
     return NextResponse.json({
       success: true,
